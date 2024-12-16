@@ -7,6 +7,7 @@ import {Predeploys} from "@contracts-bedrock/libraries/Predeploys.sol";
 import {ISuperchainTokenBridge} from "optimism/packages/contracts-bedrock/src/L2/interfaces/ISuperchainTokenBridge.sol";
 
 error CallerNotL2ToL2CrossDomainMessenger();
+
 error InvalidCrossDomainSender();
 error InvalidAmount();
 error TransferFailed();
