@@ -47,12 +47,8 @@ contract SmartDisperse {
     ) external {
         require(_recipients.length == _amounts.length, "Arrays length mismatch");
         
-        uint256 totalAmount = 0; bool success = SafeCall.call(target, msg.value, message);
-
-        if (!success) {
-            revert TargetCallFailed();
-        }
-
+        uint256 totalAmount = 0;
+        
         for (uint256 i = 0; i < _amounts.length; i++) {
             totalAmount += _amounts[i];
         }
