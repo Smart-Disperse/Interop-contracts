@@ -7,30 +7,37 @@ import {Predeploys} from "@contracts-bedrock/libraries/Predeploys.sol";
 import {ISuperchainTokenBridge} from "optimism/packages/contracts-bedrock/src/L2/interfaces/ISuperchainTokenBridge.sol";
 
 error CallerNotL2ToL2CrossDomainMessenger();
-
 error InvalidCrossDomainSender();
 error InvalidAmount();
 error TransferFailed();
 
-/// @notice Structure to hold transfer details
-struct TransferMessage {
-    address[] recipients;
-    uint256[] amounts;
-    address tokenAddress;
-    uint256 totalAmount;
-}
 
 contract SmartDisperse {
+
+    /// @notice Structure to hold transfer details
+    struct TransferMessage {
+        address[] recipients;
+        uint256[] amounts;
+        address tokenAddress;
+        uint256 totalAmount;
+    }
+    
+    /*******************************     EVENTS      ***********************************/
+
     event TokensSent(uint256 indexed fromChainId, uint256 indexed toChainId, uint256 totalAmount);
     event TokensReceived(uint256 indexed fromChainId, uint256 indexed toChainId, uint256 totalAmount);
 
     IL2ToL2CrossDomainMessenger internal messenger = IL2ToL2CrossDomainMessenger(Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER);
+
+    /*******************************     MODIFIERS      ***********************************/
 
     modifier onlyCrossDomainCallback() {
         if (msg.sender != address(messenger)) revert CallerNotL2ToL2CrossDomainMessenger();
         if (messenger.crossDomainMessageSender() != address(this)) revert InvalidCrossDomainSender();
         _;
     }
+
+    // function disperseSameChain(address[] calldata _recipients)
 
     /**
      * @notice Transfers tokens to multiple recipients on another chain
@@ -48,18 +55,17 @@ contract SmartDisperse {
         require(_recipients.length == _amounts.length, "Arrays length mismatch");
         
         uint256 totalAmount = 0;
-        
         for (uint256 i = 0; i < _amounts.length; i++) {
             totalAmount += _amounts[i];
         }
-
 
         // Transfer tokens from sender to this contract
         bool success = ISuperchainERC20(_token).transferFrom(msg.sender, address(this), totalAmount);
         if (!success) revert TransferFailed();
 
+        // Firstly, Send the Token
         ISuperchainTokenBridge(Predeploys.SUPERCHAIN_TOKEN_BRIDGE).sendERC20(
-            Predeploys.SUPERCHAIN_WETH,
+            _token,
             address(this),
             totalAmount,
             _toChainId
@@ -79,7 +85,7 @@ contract SmartDisperse {
             address(this),
             abi.encodeCall(this.receiveTokens, (message))
         );
-        
+
         emit TokensSent(block.chainid, _toChainId, totalAmount);
     }
 
@@ -90,15 +96,13 @@ contract SmartDisperse {
      */
     function receiveTokens(TransferMessage memory _message) external onlyCrossDomainCallback {
         uint256 verifyTotal = 0;
+
         // Distribute tokens to all recipients
         for (uint256 i = 0; i < _message.recipients.length; i++) {
             verifyTotal += _message.amounts[i];
             bool success = ISuperchainERC20(_message.tokenAddress).transfer(_message.recipients[i], _message.amounts[i]);
             if (!success) revert TransferFailed();
         }
-
-        // require(verifyTotal <= address(this).balance, "Insufficient WETH minted");
-
 
         // Verify total amount matches
         if (verifyTotal != _message.totalAmount) revert InvalidAmount();
@@ -108,14 +112,5 @@ contract SmartDisperse {
             block.chainid,
             _message.totalAmount
         );
-    }
-
-    receive() external payable {
-        // Handle direct Ether transfers
-    }
-
-    // Triggered for calls to non-existing functions or with extra data
-    fallback() external payable {
-        // Handle unexpected calls or transfers
     }
 }

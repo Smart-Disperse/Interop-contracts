@@ -1,160 +1,153 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
-// import "forge-std/Test.sol";
-// import "forge-std/console.sol";
-// import {SmartDisperse} from "../src/SmartDisperse.sol";
-// import {IL2ToL2CrossDomainMessenger} from "@contracts-bedrock/L2/interfaces/IL2ToL2CrossDomainMessenger.sol";
-// import {ISuperchainERC20} from "optimism/packages/contracts-bedrock/src/L2/interfaces/ISuperchainERC20.sol";
-// import {ISuperchainTokenBridge} from "optimism/packages/contracts-bedrock/src/L2/interfaces/ISuperchainTokenBridge.sol";
-// import {Predeploys} from "@contracts-bedrock/libraries/Predeploys.sol";
+import "forge-std/Test.sol";
+import "forge-std/console.sol";
+import {SmartDisperse} from "../src/SmartDisperse.sol";
+import {IL2ToL2CrossDomainMessenger} from "@contracts-bedrock/L2/interfaces/IL2ToL2CrossDomainMessenger.sol";
+import {ISuperchainERC20} from "optimism/packages/contracts-bedrock/src/L2/interfaces/ISuperchainERC20.sol";
+import {ISuperchainTokenBridge} from "optimism/packages/contracts-bedrock/src/L2/interfaces/ISuperchainTokenBridge.sol";
+import { ISuperchainWETH } from "optimism/packages/contracts-bedrock/src/L2/interfaces/ISuperchainWETH.sol";
 
-// contract SmartDisperseTest is Test {
-//     SmartDisperse public smartDisperse;
+import {Predeploys} from "@contracts-bedrock/libraries/Predeploys.sol";
 
-//     address public deployer;
-//     address public recipient1 = 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC;
-//     address public recipient2 = 0x90F79bf6EB2c4f870365E785982E1f101E93b906;
-//     address public superchainWETH = Predeploys.SUPERCHAIN_WETH;
-//     address public crossDomainMessenger = Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER;
+contract SmartDisperseTest is Test {
 
-//     uint256 public toChainId = 902; // OPChainB
+    address public deployer;
+    address public crossDomainMessenger = Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER;
 
-//     function setUp() public {
-//         deployer = vm.addr(1);
-//         vm.startPrank(deployer);
-//         smartDisperse = new SmartDisperse({salt: "SmartDisperse"});
-//         vm.stopPrank();
-//     }
+    uint256 public toChainId = 902; // OPChainB
+    address payable constant SUPERCHAIN_WETH_TOKEN = payable(0x4200000000000000000000000000000000000024);
+    
+    // Test addresses (replace with actual addresses)
+    address[] recipients = [
+        0x70997970C51812dc3A010C7d01b50e0d17dc79C8,
+        0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC
+    ];
+    uint256[] amounts = [1 ether, 2 ether];
 
-//     function testTransferTokensTo() public {
-//         uint256[] memory amounts = new uint256[](2);
-//         amounts[0] = 1 ether;
-//         amounts[1] = 2 ether;
+    // Deploy or set the real Superchain WETH contract
+    ISuperchainERC20 superchainWETH = ISuperchainERC20(Predeploys.SUPERCHAIN_WETH);
+    SmartDisperse disperse901;
+    SmartDisperse disperse902;
 
-//         address[] memory recipients = new address[](2);
-//         recipients[0] = recipient1;
-//         recipients[1] = recipient2;
+    uint256 op1Fork;
+    uint256 op2Fork;
 
-//         uint256 totalAmount = 3 ether;
+    function setUp() public {
+        deployer = vm.addr(1);
+        vm.startPrank(deployer);
 
-//         // Mock token behavior
-//         vm.mockCall(
-//             superchainWETH,
-//             abi.encodeWithSelector(ISuperchainERC20.transferFrom.selector, deployer, address(smartDisperse), totalAmount),
-//             abi.encode(true)
-//         );
+        
+        // Ensure the deployer has enough tokens
+        uint256 initialBalance = 100 ether;
+        op1Fork = vm.createSelectFork(vm.envString("OP1_RPC"));
+        disperse901 = new SmartDisperse{salt: "SmartDisperse"}();
 
-//         vm.mockCall(
-//             Predeploys.SUPERCHAIN_TOKEN_BRIDGE,
-//             abi.encodeWithSelector(ISuperchainTokenBridge.sendERC20.selector, superchainWETH, address(smartDisperse), totalAmount, toChainId),
-//             abi.encode()
-//         );
+        (bool success, ) = SUPERCHAIN_WETH_TOKEN.call{value: 10 ether}("");
+        require(success, "WETH minting failed!");
+        uint256 userBalanceOfWETH = ISuperchainWETH(SUPERCHAIN_WETH_TOKEN).balanceOf(deployer);
+        console2.log("WETH balance on chain 901 ", userBalanceOfWETH);
 
-//         vm.startPrank(deployer);
-//         smartDisperse.transferTokensTo(toChainId, recipients, amounts, superchainWETH);
-//         vm.stopPrank();
-//     }
 
-//     function testReceiveTokens() public {
-//         uint256[] memory amounts = new uint256[](2);
-//         amounts[0] = 1 ether;
-//         amounts[1] = 2 ether;
+        op2Fork = vm.createSelectFork(vm.envString("OP2_RPC"));
+        disperse902 = new SmartDisperse{salt: "SmartDisperse"}();
 
-//         address[] memory recipients = new address[](2);
-//         recipients[0] = recipient1;
-//         recipients[1] = recipient2;
+        
+        vm.stopPrank();
+    }
 
-//         uint256 totalAmount = 3 ether;
 
-//         SmartDisperse.TransferMessage memory message = SmartDisperse.TransferMessage({
-//             recipients: recipients,
-//             amounts: amounts,
-//             tokenAddress: superchainWETH,
-//             totalAmount: totalAmount
-//         });
+    function testTransferTokensTo() public {
 
-//         vm.mockCall(
-//             superchainWETH,
-//             abi.encodeWithSelector(ISuperchainERC20.transfer.selector, recipient1, 1 ether),
-//             abi.encode(true)
-//         );
+        uint256 totalAmount = 3 ether;
 
-//         vm.mockCall(
-//             superchainWETH,
-//             abi.encodeWithSelector(ISuperchainERC20.transfer.selector, recipient2, 2 ether),
-//             abi.encode(true)
-//         );
+        vm.startPrank(deployer);
+        vm.selectFork(op1Fork);
 
-//         vm.startPrank(crossDomainMessenger);
-//         vm.mockCall(
-//             crossDomainMessenger,
-//             abi.encodeWithSelector(IL2ToL2CrossDomainMessenger.crossDomainMessageSender.selector),
-//             abi.encode(address(smartDisperse))
-//         );
+        // Ensure the deployer has approved the smart contract to transfer tokens
+        superchainWETH.approve(address(disperse901), totalAmount);
 
-//         smartDisperse.receiveTokens(message);
-//         vm.stopPrank();
-//     }
+        // Perform the actual transfer of tokens
+        disperse901.transferTokensTo(toChainId, recipients, amounts, address(superchainWETH));
 
-//     function testInvalidAmountsInReceiveTokens() public {
-//         uint256[] memory amounts = new uint256[](2);
-//         amounts[0] = 1 ether;
-//         amounts[1] = 1 ether; // Invalid totalAmount
+        vm.stopPrank();
+    }
 
-//         address[] memory recipients = new address[](2);
-//         recipients[0] = recipient1;
-//         recipients[1] = recipient2;
+    function testReceiveTokens() public {
 
-//         uint256 totalAmount = 3 ether; // Mismatched totalAmount
+        uint256 totalAmount = 3 ether;
 
-//         SmartDisperse.TransferMessage memory message = SmartDisperse.TransferMessage({
-//             recipients: recipients,
-//             amounts: amounts,
-//             tokenAddress: superchainWETH,
-//             totalAmount: totalAmount
-//         });
+        vm.selectFork(op1Fork);
+        vm.startPrank(deployer);
+        SmartDisperse.TransferMessage memory message = SmartDisperse.TransferMessage({
+            recipients: recipients,
+            amounts: amounts,
+            tokenAddress: address(superchainWETH),
+            totalAmount: totalAmount
+        });
 
-//         vm.startPrank(crossDomainMessenger);
-//         vm.expectRevert(SmartDisperse.InvalidAmount.selector);
-//         smartDisperse.receiveTokens(message);
-//         vm.stopPrank();
-//     }
+        vm.stopPrank();
+        
+        vm.selectFork(op2Fork);
+        vm.startPrank(crossDomainMessenger);
+        disperse902.receiveTokens(message);
+        vm.stopPrank();
+    }
 
-//     function testMismatchedArrayLengths() public {
-//         uint256[] memory amounts = new uint256[](2);
-//         amounts[0] = 1 ether;
-//         amounts[1] = 2 ether;
+    function testInvalidAmountsInReceiveTokens() public {
 
-//         address[] memory recipients = new address[](1); // Mismatched length
-//         recipients[0] = recipient1;
+        uint256 totalAmount = 3 ether; // Mismatched totalAmount
 
-//         vm.startPrank(deployer);
-//         vm.expectRevert(SmartDisperse.InvalidArrayLengths.selector);
-//         smartDisperse.transferTokensTo(toChainId, recipients, amounts, superchainWETH);
-//         vm.stopPrank();
-//     }
+        vm.selectFork(op1Fork);
+        vm.startPrank(deployer);
 
-//     function testTokenTransferFailure() public {
-//         uint256[] memory amounts = new uint256[](2);
-//         amounts[0] = 1 ether;
-//         amounts[1] = 2 ether;
+        SmartDisperse.TransferMessage memory message = SmartDisperse.TransferMessage({
+            recipients: recipients,
+            amounts: amounts,
+            tokenAddress: address(superchainWETH),
+            totalAmount: totalAmount
+        });
 
-//         address[] memory recipients = new address[](2);
-//         recipients[0] = recipient1;
-//         recipients[1] = recipient2;
+        vm.selectFork(op2Fork);
 
-//         uint256 totalAmount = 3 ether;
+        vm.startPrank(crossDomainMessenger);
+        vm.expectRevert("InvalidAmount()");
+        disperse902.receiveTokens(message);
+        vm.stopPrank();
+    }
 
-//         vm.mockCall(
-//             superchainWETH,
-//             abi.encodeWithSelector(ISuperchainERC20.transferFrom.selector, deployer, address(smartDisperse), totalAmount),
-//             abi.encode(false) // Simulate failure
-//         );
+    // function testMismatchedArrayLengths() public {
+    //     address[2] memory recipients = [
+    //         0x70997970C51812dc3A010C7d01b50e0d17dc79C8,
+    //         0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC
+    //     ];
+    //     uint256[1] memory amounts = [1 ether];
 
-//         vm.startPrank(deployer);
-//         vm.expectRevert(SmartDisperse.TokenTransferFailed.selector);
-//         smartDisperse.transferTokensTo(toChainId, recipients, amounts, superchainWETH);
-//         vm.stopPrank();
-//     }
-// }
+    //     vm.startPrank(deployer);
+    //     vm.expectRevert(SmartDisperse.InvalidArrayLengths.selector);
+    //     smartDisperse.transferTokensTo(toChainId, recipients, amounts, address(superchainWETH));
+    //     vm.stopPrank();
+    // }
+
+    // function testTokenTransferFailure() public {
+    //     address[2] memory recipients = [
+    //         0x70997970C51812dc3A010C7d01b50e0d17dc79C8,
+    //         0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC
+    //     ];
+    //     uint256[2] memory amounts = [1 ether, 2 ether];
+
+    //     uint256 totalAmount = 3 ether;
+
+    //     vm.startPrank(deployer);
+
+    //     // Ensure the deployer has approved the smart contract to transfer tokens
+    //     superchainWETH.approve(address(smartDisperse), totalAmount);
+
+    //     // Simulate failure in token transfer
+    //     vm.expectRevert(SmartDisperse.TransferFailed.selector);
+    //     smartDisperse.transferTokensTo(toChainId, recipients, amounts, address(superchainWETH));
+
+    //     vm.stopPrank();
+    // }
+}
