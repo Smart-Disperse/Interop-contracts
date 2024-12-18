@@ -38,6 +38,12 @@ contract SmartDisperse is ReentrancyGuard {
         address[] indexed recipients,
         uint256[] values
     );
+    event TokensDispersed(
+        address indexed sender,
+        address[] indexed recipients,
+        uint256[] values,
+        address token
+    );
 
     IL2ToL2CrossDomainMessenger internal messenger =
         IL2ToL2CrossDomainMessenger(Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER);
@@ -63,7 +69,7 @@ contract SmartDisperse is ReentrancyGuard {
         address[] memory recipients,
         uint256[] memory values
     ) external payable nonReentrant {
-        require(recipients.length == values.length, "Mismatched array lengths");
+        require(recipients.length == values.length, "Mismatched array length");
 
         uint256 requiredAmount = 0;
 
@@ -85,6 +91,50 @@ contract SmartDisperse is ReentrancyGuard {
         }
 
         emit NativeTokensDispersed(msg.sender, recipients, values);
+    }
+
+    /**
+     * @notice Transfers ISuperchainERC20 tokens to multiple recipients on the same chain
+     * @param recipients The array of addresses to recieve the tokens
+     * @param values The corresponding amounts of tokens to transfer to each recipients
+     * @param token The address of the token to be transferred
+     */
+
+    function disperseTokens(
+        address[] memory recipients,
+        uint256[] memory values,
+        address token
+    ) external nonReentrant {
+        require(recipients.length == values.length, "Mismatched array length");
+
+        uint256 totalAmount = 0;
+        for (uint256 i = 0; i < values.length; i++) {
+            totalAmount += values[i];
+        }
+
+        bool success = ISuperchainERC20(token).transferFrom(
+            msg.sender,
+            address(this),
+            totalAmount
+        );
+        require(success, "TransferFrom failed");
+
+        for (uint256 i = 0; i < recipients.length; i++) {
+            success = ISuperchainERC20(token).transfer(
+                recipients[i],
+                values[i]
+            );
+            require(
+                success,
+                string(
+                    abi.encodePacked(
+                        "Transfer failed for address: ",
+                        recipients[i]
+                    )
+                )
+            );
+        }
+        emit TokensDispersed(msg.sender, recipients, values, token);
     }
 
     /**
