@@ -12,29 +12,18 @@ import {ISuperchainWETH} from "optimism/packages/contracts-bedrock/src/L2/interf
 import {Predeploys} from "@contracts-bedrock/libraries/Predeploys.sol";
 
 contract SmartDisperseTest is Test {
-    address public deployer = vm.addr(vm.envUint("PRIVATE_KEY"));
-    address public crossDomainMessenger =
-        Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER;
+    
+    SmartDisperse smartDisperse;
+    address public crossDomainMessenger = Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER;
+    address payable constant SUPERCHAIN_WETH_TOKEN = payable(0x4200000000000000000000000000000000000024);
 
-    uint256 public toChainId = 902; // OPChainB
-    address payable constant SUPERCHAIN_WETH_TOKEN =
-        payable(0x4200000000000000000000000000000000000024);
-
-    // Test addresses (replace with actual addresses)
     address[] recipients = [
         0x70997970C51812dc3A010C7d01b50e0d17dc79C8,
         0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC
     ];
     uint256[] amounts = [1 ether, 2 ether];
 
-    // Deploy or set the real Superchain WETH contract
-    ISuperchainERC20 superchainWETH =
-        ISuperchainERC20(Predeploys.SUPERCHAIN_WETH);
-    SmartDisperse disperse901;
-    SmartDisperse disperse902;
-
-    uint256 op1Fork;
-    uint256 op2Fork;
+    ISuperchainERC20 superchainWETH = ISuperchainERC20(Predeploys.SUPERCHAIN_WETH);
 
     function _mockAndExpect(
         address _receiver,
@@ -46,16 +35,9 @@ contract SmartDisperseTest is Test {
     }
 
     function setUp() public {
-        vm.startPrank(deployer);
+        vm.startPrank(vm.addr(0));
 
-        // Ensure the deployer has enough tokens
-        uint256 initialBalance = 100 ether;
-        op1Fork = vm.createSelectFork(vm.envString("OP1_RPC"));
-        disperse901 = new SmartDisperse{salt: "SmartDisperse"}();
-        vm.deal(deployer, initialBalance);
-        console.log(deployer.balance);
         ISuperchainWETH(SUPERCHAIN_WETH_TOKEN).deposit{value: 10 ether}();
-        // require(success, "WETH minting failed!");
         uint256 userBalanceOfWETH = ISuperchainWETH(SUPERCHAIN_WETH_TOKEN)
             .balanceOf(deployer);
         console2.log("WETH balance on chain 901 ", userBalanceOfWETH);
@@ -108,17 +90,23 @@ contract SmartDisperseTest is Test {
 
         // Mock the behavior of L2ToL2CrossDomainMessenger
         address messenger = Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER;
-        vm.startBroadcast(messenger);
-        
+        vm.startPrank(messenger);
+
+        // to set the CrossDomainMessageSender in L2toL2CrossDomainMessenger Contract
         _mockAndExpect(
             Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER,
-            abi.encodeWithSelector(IL2ToL2CrossDomainMessenger.crossDomainMessageSender.selector),
-            abi.encode(address(disperse902)) // Invalid address
+            abi.encodeWithSelector(
+                IL2ToL2CrossDomainMessenger.crossDomainMessageSender.selector
+            ),
+            abi.encode(address(disperse901)) // Invalid address
         );
 
+        // to set the Destination ChainId as CrossDomainMessageSource in L2toL2CrossDomainMessenger Contract
         _mockAndExpect(
             Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER,
-            abi.encodeWithSelector(IL2ToL2CrossDomainMessenger.crossDomainMessageSource.selector),
+            abi.encodeWithSelector(
+                IL2ToL2CrossDomainMessenger.crossDomainMessageSource.selector
+            ),
             abi.encode(901)
         );
 
@@ -147,6 +135,7 @@ contract SmartDisperseTest is Test {
                 "Tokens not dispersed correctly"
             );
         }
+        vm.stopPrank();
     }
 
     // function testReceiveTokens() public {
