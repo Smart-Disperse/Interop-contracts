@@ -4,6 +4,9 @@ pragma solidity ^0.8.25;
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
 import {SmartDisperse} from "../src/SmartDisperse.sol";
+import {ISuperchainWETH} from "optimism/packages/contracts-bedrock/src/L2/interfaces/ISuperchainWETH.sol";
+import {ISuperchainERC20} from "optimism/packages/contracts-bedrock/src/L2/interfaces/ISuperchainERC20.sol";
+import {Predeploys} from "@contracts-bedrock/libraries/Predeploys.sol";
 
 contract SmartDisperseSameChainTest is Test {
     SmartDisperse public smartDisperse;
@@ -15,6 +18,10 @@ contract SmartDisperseSameChainTest is Test {
 
     address payable constant SUPERCHAIN_WETH_TOKEN =
         payable(0x4200000000000000000000000000000000000024);
+    ISuperchainERC20 superchainWETH =
+        ISuperchainERC20(Predeploys.SUPERCHAIN_WETH);
+
+    uint256 op1Fork = vm.createSelectFork(("http://127.0.0.1:9545 "));
 
     function setUp() public {
         smartDisperse = new SmartDisperse();
@@ -23,6 +30,11 @@ contract SmartDisperseSameChainTest is Test {
         vm.deal(recipient1, 0 ether);
         vm.deal(recipient2, 0 ether);
         vm.deal(recipient3, 0 ether);
+
+        vm.startPrank(user);
+        (bool success, ) = SUPERCHAIN_WETH_TOKEN.call{value: 10 ether}("");
+        require(success, "WETH minting failed!");
+        vm.stopPrank();
     }
 
     function testDisperseNative_Success() public {
@@ -72,11 +84,12 @@ contract SmartDisperseSameChainTest is Test {
         // Expect the contract to refund excess ETH
         uint256 initialBalance = address(smartDisperse).balance;
 
-        vm.prank(user);
+        vm.startPrank(user);
         smartDisperse.disperseNative{value: totalValue + excess}(
             recipients,
             values
         );
+        vm.stopPrank();
 
         uint256 finalBalance = address(smartDisperse).balance;
 
@@ -111,7 +124,6 @@ contract SmartDisperseSameChainTest is Test {
     }
 
     function testDisperseNative_TransferFailure() public {
-        // Use a recipient that reverts when receiving Ether
         address maliciousRecipient = address(new MaliciousRecipient());
 
         address[] memory recipients = new address[](1);
@@ -120,9 +132,143 @@ contract SmartDisperseSameChainTest is Test {
         uint256[] memory values = new uint256[](1);
         values[0] = 1 ether;
 
-        // Expect the transaction to revert due to transfer failure
         vm.expectRevert("Transfer failed to recipient");
         smartDisperse.disperseNative{value: 1 ether}(recipients, values);
+    }
+
+    // test disperseTokens function
+
+    function testDisperseTokens_Success() public {
+        address[] memory recipients = new address[](3);
+        recipients[0] = recipient1;
+        recipients[1] = recipient2;
+        recipients[2] = recipient3;
+
+        uint256[] memory values = new uint256[](3);
+        values[0] = 0.1 ether;
+        values[1] = 0.2 ether;
+        values[2] = 0.3 ether;
+
+        vm.selectFork(op1Fork);
+        vm.startPrank(user);
+
+        superchainWETH.approve(address(smartDisperse), 0.6 ether);
+
+        smartDisperse.disperseTokens(
+            recipients,
+            values,
+            address(superchainWETH)
+        );
+
+        assertEq(superchainWETH.balanceOf(recipient1), 0.1 ether);
+        assertEq(superchainWETH.balanceOf(recipient2), 0.2 ether);
+        assertEq(superchainWETH.balanceOf(recipient3), 0.3 ether);
+        assertEq(superchainWETH.balanceOf(user), 10 ether - 0.6 ether);
+        vm.stopPrank();
+    }
+
+    function testDisperseTokens_MismatchedArrayLengths() public {
+        address[] memory recipients = new address[](2);
+        recipients[0] = recipient1;
+        recipients[1] = recipient2;
+
+        uint256[] memory values = new uint256[](3);
+        values[0] = 0.1 ether;
+        values[1] = 0.2 ether;
+        values[2] = 0.3 ether;
+
+        // Expect revert due to mismatched array lengths
+        vm.expectRevert("Mismatched array length");
+        smartDisperse.disperseTokens(
+            recipients,
+            values,
+            address(superchainWETH)
+        );
+    }
+
+    function testDisperseTokens_TransferFromFails() public {
+        address[] memory recipients = new address[](2);
+        recipients[0] = recipient1;
+        recipients[1] = recipient2;
+
+        uint256[] memory values = new uint256[](2);
+        values[0] = 0.1 ether;
+        values[1] = 0.2 ether;
+
+        // Don't approve the contract, which will cause transferFrom to fail
+        vm.expectRevert();
+        smartDisperse.disperseTokens(
+            recipients,
+            values,
+            address(superchainWETH)
+        );
+    }
+
+    function testDisperseTokens_TransferFailsForRecipient() public {
+        address[] memory recipients = new address[](2);
+        recipients[0] = recipient1;
+        recipients[1] = recipient2;
+
+        uint256[] memory values = new uint256[](2);
+        values[0] = 0.1 ether;
+        values[1] = 0.2 ether;
+
+        superchainWETH.approve(address(smartDisperse), 0.3 ether);
+
+        // Make the second recipient's transfer fail (mocked behavior)
+        vm.mockCall(
+            address(superchainWETH),
+            abi.encodeWithSelector(
+                superchainWETH.transfer.selector,
+                recipient2,
+                0.2 ether
+            ),
+            abi.encode(false)
+        );
+
+        vm.expectRevert();
+        smartDisperse.disperseTokens(
+            recipients,
+            values,
+            address(superchainWETH)
+        );
+    }
+
+    function testDisperseTokens_EmptyRecipients() public {
+        address[] memory recipients = new address[](0);
+        uint256[] memory values = new uint256[](0);
+
+        superchainWETH.approve(address(smartDisperse), 0);
+
+        smartDisperse.disperseTokens(
+            recipients,
+            values,
+            address(superchainWETH)
+        );
+
+        assertEq(superchainWETH.balanceOf(user), 10 ether);
+    }
+
+    function testDisperseTokens_ZeroValues() public {
+        address[] memory recipients = new address[](2);
+        recipients[0] = recipient1;
+        recipients[1] = recipient2;
+
+        uint256[] memory values = new uint256[](2);
+        values[0] = 0;
+        values[1] = 0;
+
+        superchainWETH.approve(address(smartDisperse), 0);
+
+        smartDisperse.disperseTokens(
+            recipients,
+            values,
+            address(superchainWETH)
+        );
+
+        assertEq(superchainWETH.balanceOf(recipient1), 0);
+        assertEq(superchainWETH.balanceOf(recipient2), 0);
+        assertEq(superchainWETH.balanceOf(user), 10 ether);
     }
 }
 
