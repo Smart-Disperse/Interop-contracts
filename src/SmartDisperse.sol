@@ -124,7 +124,15 @@ contract SmartDisperse is ReentrancyGuard {
                 recipients[i],
                 values[i]
             );
-            if (!success) revert TransferFailed();
+            require(
+                success,
+                string(
+                    abi.encodePacked(
+                        "Transfer failed for address: ",
+                        recipients[i]
+                    )
+                )
+            );
         }
         emit TokensDispersed(msg.sender, recipients, values, token);
     }

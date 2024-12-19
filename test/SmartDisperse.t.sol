@@ -109,6 +109,18 @@ contract SmartDisperseTest is Test {
         // Mock the behavior of L2ToL2CrossDomainMessenger
         address messenger = Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER;
         vm.startBroadcast(messenger);
+        
+        _mockAndExpect(
+            Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER,
+            abi.encodeWithSelector(IL2ToL2CrossDomainMessenger.crossDomainMessageSender.selector),
+            abi.encode(address(disperse902)) // Invalid address
+        );
+
+        _mockAndExpect(
+            Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER,
+            abi.encodeWithSelector(IL2ToL2CrossDomainMessenger.crossDomainMessageSource.selector),
+            abi.encode(901)
+        );
 
         // console.log("crossdomainmessagesender:  ", IL2ToL2CrossDomainMessenger(messenger).crossDomainMessageSender());
         disperse902.receiveTokens(
