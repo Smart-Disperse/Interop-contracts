@@ -8,6 +8,10 @@ import {ISuperchainWETH} from "optimism/packages/contracts-bedrock/src/L2/interf
 import {ISuperchainERC20} from "optimism/packages/contracts-bedrock/src/L2/interfaces/ISuperchainERC20.sol";
 import {Predeploys} from "@contracts-bedrock/libraries/Predeploys.sol";
 
+error InvalidAmount();
+error TransferFailed();
+error InvalidArrayLength();
+
 contract SmartDisperseSameChainTest is Test {
     SmartDisperse public smartDisperse;
 
@@ -105,7 +109,7 @@ contract SmartDisperseSameChainTest is Test {
         values[0] = 1 ether;
 
         // Expect the transaction to revert
-        vm.expectRevert("Mismatched array length");
+        vm.expectRevert(InvalidArrayLength.selector);
         smartDisperse.disperseNative{value: 1 ether}(recipients, values);
     }
 
@@ -119,7 +123,7 @@ contract SmartDisperseSameChainTest is Test {
         values[1] = 2 ether;
 
         // Insufficient ETH sent
-        vm.expectRevert("Insufficient ETH sent");
+        vm.expectRevert(abi.encodeWithSelector(InvalidAmount.selector));
         smartDisperse.disperseNative{value: 1.5 ether}(recipients, values);
     }
 
@@ -154,7 +158,7 @@ contract SmartDisperseSameChainTest is Test {
 
         superchainWETH.approve(address(smartDisperse), 0.6 ether);
 
-        smartDisperse.disperseTokens(
+        smartDisperse.disperseERC20(
             recipients,
             values,
             address(superchainWETH)
@@ -178,8 +182,8 @@ contract SmartDisperseSameChainTest is Test {
         values[2] = 0.3 ether;
 
         // Expect revert due to mismatched array lengths
-        vm.expectRevert("Mismatched array length");
-        smartDisperse.disperseTokens(
+        vm.expectRevert(InvalidArrayLength.selector);
+        smartDisperse.disperseERC20(
             recipients,
             values,
             address(superchainWETH)
@@ -197,7 +201,7 @@ contract SmartDisperseSameChainTest is Test {
 
         // Don't approve the contract, which will cause transferFrom to fail
         vm.expectRevert();
-        smartDisperse.disperseTokens(
+        smartDisperse.disperseERC20(
             recipients,
             values,
             address(superchainWETH)
@@ -227,7 +231,7 @@ contract SmartDisperseSameChainTest is Test {
         );
 
         vm.expectRevert();
-        smartDisperse.disperseTokens(
+        smartDisperse.disperseERC20(
             recipients,
             values,
             address(superchainWETH)
@@ -240,7 +244,7 @@ contract SmartDisperseSameChainTest is Test {
 
         superchainWETH.approve(address(smartDisperse), 0);
 
-        smartDisperse.disperseTokens(
+        smartDisperse.disperseERC20(
             recipients,
             values,
             address(superchainWETH)
@@ -260,7 +264,7 @@ contract SmartDisperseSameChainTest is Test {
 
         superchainWETH.approve(address(smartDisperse), 0);
 
-        smartDisperse.disperseTokens(
+        smartDisperse.disperseERC20(
             recipients,
             values,
             address(superchainWETH)

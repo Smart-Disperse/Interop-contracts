@@ -30,8 +30,7 @@ contract DeployAndTransfer is Script {
     }
 
     function run() external {
-        uint256 privateKey = vm.envUint("PRIVATE_KEY1");
-        address deployer = vm.addr(privateKey);
+        uint256 privateKey = vm.envUint("PRIVATE_KEY");
         
         // Deploy and check balances on Chain 901
         uint256 op1Fork = vm.createSelectFork(vm.envString("OP1_RPC"));
@@ -77,9 +76,8 @@ contract DeployAndTransfer is Script {
             totalAmount += amounts[i];
         }
         console2.log("Total amount to transfer:", totalAmount);
-        // Approve and transfer
-        token901.approve(address(disperse901), totalAmount);
-        disperse901.transferTokensTo(902, recipients, amounts, 0x4200000000000000000000000000000000000024);
+        
+        disperse901.crossChainDisperseNative{value: totalAmount}(902, recipients, amounts, 0x4200000000000000000000000000000000000024);
         vm.stopBroadcast();
         console2.log("Transfer initiated");
 
