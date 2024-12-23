@@ -16,13 +16,21 @@ error InvalidAmount();
 error TransferFailed();
 error InvalidArrayLength();
 
+
 contract SmartDisperse is ReentrancyGuard {
+
     /// @notice Structure to hold transfer details for cross-chain token distribution
     struct TransferMessage {
         address[] recipients; // Addresses of the recipients
         uint256[] amounts;    // Amounts to be sent to each recipient
         address tokenAddress;  // Address of the token being transferred
         uint256 totalAmount;   // Total amount of tokens to be distributed
+    }
+
+    struct CrossChainTransfer {
+        uint256 chainId;
+        address[] recipients;
+        uint256[] amounts;
     }
 
     /*******************************     EVENTS      ***********************************/
@@ -264,86 +272,71 @@ contract SmartDisperse is ReentrancyGuard {
         emit ERC20TokensSent(block.chainid, _toChainId, totalAmount);
     }
 
-    /**
- * @notice Transfers Native tokens to multiple recipients across multiple chains
- * @param _toChainIds Array of destination chain IDs
- * @param _chainRecipients Array of arrays containing recipient addresses for each chain
- * @param _chainAmounts Array of arrays containing amounts for each recipient on each chain
- * @param _token Address of the ERC20 token
- */
-function crossChainDisperseNativeMultiChain(
-    uint256[] calldata _toChainIds,
-    address[][] calldata _chainRecipients,
-    uint256[][] calldata _chainAmounts,
-    address _token
-) external payable {
-    // Validate array lengths
-    if(_toChainIds.length != _chainRecipients.length || 
-       _toChainIds.length != _chainAmounts.length) revert InvalidArrayLength();
-    
-    uint256 totalAmount = 0;
-    
-    // Validate recipients and amounts arrays for each chain and calculate total
-    for (uint256 chainIndex = 0; chainIndex < _toChainIds.length; chainIndex++) {
-        if(_chainRecipients[chainIndex].length != _chainAmounts[chainIndex].length) 
-            revert InvalidArrayLength();
-            
-        // Calculate total amount for current chain
-        for (uint256 i = 0; i < _chainAmounts[chainIndex].length; i++) {
-            totalAmount += _chainAmounts[chainIndex][i];
+    function crossChainDisperseNativeMultiChain(
+        CrossChainTransfer[] calldata transfers,
+        address _token
+    ) external payable {
+        uint256 totalAmount = _validateAndCalculateTotal(transfers);
+        
+        if (msg.value < totalAmount) revert InvalidAmount();
+        
+        ISuperchainWETH(payable(Predeploys.SUPERCHAIN_WETH)).deposit{value: totalAmount}();
+        
+        for (uint256 i = 0; i < transfers.length; i++) {
+            _processTransfer(transfers[i], _token);
+        }
+        
+        uint256 refund = msg.value - totalAmount;
+        if (refund > 0) {
+            payable(msg.sender).transfer(refund);
         }
     }
-    
-    // Verify sufficient ETH sent
-    if(msg.value < totalAmount) revert InvalidAmount();
-    
-    // Wrap total ETH to WETH
-    ISuperchainWETH(payable(Predeploys.SUPERCHAIN_WETH)).deposit{value: totalAmount}();
-    
-    // Process transfers for each chain
-    uint256 processedAmount = 0;
-    for (uint256 chainIndex = 0; chainIndex < _toChainIds.length; chainIndex++) {
+
+    function _validateAndCalculateTotal(
+        CrossChainTransfer[] calldata transfers
+    ) internal pure returns (uint256 totalAmount) {
+        for (uint256 i = 0; i < transfers.length; i++) {
+            if (transfers[i].recipients.length != transfers[i].amounts.length)
+                revert InvalidArrayLength();
+            
+            for (uint256 j = 0; j < transfers[i].amounts.length; j++) {
+                totalAmount += transfers[i].amounts[j];
+            }
+        }
+    }
+
+    function _processTransfer(
+        CrossChainTransfer calldata transfer,
+        address _token
+    ) internal {
         uint256 chainTotal = 0;
-        
-        // Calculate total for current chain
-        for (uint256 i = 0; i < _chainAmounts[chainIndex].length; i++) {
-            chainTotal += _chainAmounts[chainIndex][i];
+        for (uint256 j = 0; j < transfer.amounts.length; j++) {
+            chainTotal += transfer.amounts[j];
         }
         
-        // Send tokens to bridge for current chain
         ISuperchainTokenBridge(Predeploys.SUPERCHAIN_TOKEN_BRIDGE).sendERC20(
             _token,
             address(this),
             chainTotal,
-            _toChainIds[chainIndex]
+            transfer.chainId
         );
         
-        // Create transfer message for current chain
         TransferMessage memory message = TransferMessage({
-            recipients: _chainRecipients[chainIndex],
-            amounts: _chainAmounts[chainIndex],
+            recipients: transfer.recipients,
+            amounts: transfer.amounts,
             tokenAddress: _token,
             totalAmount: chainTotal
         });
         
-        // Send message to destination chain
         messenger.sendMessage(
-            _toChainIds[chainIndex],
+            transfer.chainId,
             address(this),
             abi.encodeCall(this.receiveTokens, (message))
         );
         
-        processedAmount += chainTotal;
-        
-        emit NativeTokensSent(block.chainid, _toChainIds[chainIndex], chainTotal);
+        emit NativeTokensSent(block.chainid, transfer.chainId, chainTotal);
     }
-    
-    // Refund any excess ETH
-    uint256 refund = msg.value - totalAmount;
-    if (refund > 0) {
-        payable(msg.sender).transfer(refund);
-    }
-}
+
 
     /*******************************     DESTINATION CHAIN EXECUTION      ***********************************/
 

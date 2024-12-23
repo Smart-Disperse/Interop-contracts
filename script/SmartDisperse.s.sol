@@ -8,8 +8,25 @@ import { ISuperchainERC20 } from "optimism/packages/contracts-bedrock/src/L2/int
 import { console2 } from "forge-std/console2.sol";
 import { ISuperchainWETH } from "optimism/packages/contracts-bedrock/src/L2/interfaces/ISuperchainWETH.sol";
 
+struct CrossChainTransfer {
+    uint256 chainId;
+    address[] recipients;
+    uint256[] amounts;
+}
+
+/// @notice Structure to hold transfer details for cross-chain token distribution
+struct TransferMessage {
+    address[] recipients; // Addresses of the recipients
+    uint256[] amounts;    // Amounts to be sent to each recipient
+    address tokenAddress;  // Address of the token being transferred
+    uint256 totalAmount;   // Total amount of tokens to be distributed
+}
+
+
 contract DeployAndTransfer is Script {
     address payable constant SUPERCHAIN_WETH_TOKEN = payable(0x4200000000000000000000000000000000000024);
+    address public constant SMART_DISPERSE_CONTRACT = 0xBaeD153B8081feE1648bBD55A11749a00e462b99;
+    
     
     // Test addresses (replace with actual addresses)
     address[] recipients = [
@@ -37,7 +54,8 @@ contract DeployAndTransfer is Script {
         console2.log("Deploying on Chain 901...");
         vm.startBroadcast(privateKey);
 
-        SmartDisperse disperse901 = new SmartDisperse{salt: "SmartDisperse"}();
+        SmartDisperse disperse901 = SmartDisperse(SMART_DISPERSE_CONTRACT);
+        // SmartDisperse disperse901 = new SmartDisperse{salt: "SmartDisperse"}();
 
         // Mint WETH by sending ETH to the WETH contract
         (bool success, ) = SUPERCHAIN_WETH_TOKEN.call{value: 10 ether}("");
@@ -56,7 +74,8 @@ contract DeployAndTransfer is Script {
         uint256 op2Fork = vm.createSelectFork(vm.envString("OP2_RPC"));
         console2.log("Deploying on Chain 902...");
         vm.startBroadcast(privateKey);
-        SmartDisperse disperse902 = new SmartDisperse{salt: "SmartDisperse"}();
+        SmartDisperse disperse902 = SmartDisperse(SMART_DISPERSE_CONTRACT);
+        // SmartDisperse disperse902 = new SmartDisperse{salt: "SmartDisperse"}();
         console2.log("SmartDisperse deployed on Chain 902 at:", address(disperse902));
         vm.stopBroadcast();
 
@@ -78,11 +97,11 @@ contract DeployAndTransfer is Script {
         console2.log("Total amount to transfer:", totalAmount);
         
         disperse901.crossChainDisperseNative{value: totalAmount}(902, recipients, amounts, 0x4200000000000000000000000000000000000024);
+        vm.roll(block.number + 1);
         vm.stopBroadcast();
         console2.log("Transfer initiated");
 
         // Wait for a few blocks to ensure transfer completion
-        // vm.roll(block.number + 1);
 
         // Check final balances on Chain 902
         vm.selectFork(op2Fork);
