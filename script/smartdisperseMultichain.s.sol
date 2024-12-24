@@ -11,7 +11,6 @@ import { ISuperchainWETH } from "optimism/packages/contracts-bedrock/src/L2/inte
 contract DeployAndTransferMultiChain is Script {
     address payable constant SUPERCHAIN_WETH_TOKEN = payable(0x4200000000000000000000000000000000000024);
     address public constant SMART_DISPERSE_CONTRACT = 0xBaeD153B8081feE1648bBD55A11749a00e462b99;
-;
     
     function logBalances(uint256 chainId, ISuperchainWETH token, address[] memory recipients) internal view {
         console2.log("\nBalances on Chain", chainId);
@@ -105,8 +104,7 @@ contract DeployAndTransferMultiChain is Script {
         
         // Initiate multi-chain transfer with new interface
         disperseOP.crossChainDisperseNativeMultiChain{value: totalAmount}(
-            transfers,
-            SUPERCHAIN_WETH_TOKEN
+            transfers
         );
 
         vm.roll(block.number + 1);

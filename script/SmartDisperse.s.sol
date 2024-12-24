@@ -96,7 +96,7 @@ contract DeployAndTransfer is Script {
         }
         console2.log("Total amount to transfer:", totalAmount);
         
-        disperse901.crossChainDisperseNative{value: totalAmount}(902, recipients, amounts, 0x4200000000000000000000000000000000000024);
+        disperse901.crossChainDisperseNative{value: totalAmount}(902, recipients, amounts);
         vm.roll(block.number + 1);
         vm.stopBroadcast();
         console2.log("Transfer initiated");

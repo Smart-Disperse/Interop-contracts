@@ -164,13 +164,11 @@ contract SmartDisperse is ReentrancyGuard {
      * @param _toChainId The destination chain ID
      * @param _recipients Array of recipient addresses
      * @param _amounts Array of amounts for each recipient
-     * @param _token Address of the ERC20 token
      */
     function crossChainDisperseNative(
         uint256 _toChainId,
         address[] calldata _recipients,
-        uint256[] calldata _amounts,
-        address _token
+        uint256[] calldata _amounts
     ) external payable {
         if(_recipients.length != _amounts.length) revert InvalidArrayLength();
 
@@ -186,7 +184,7 @@ contract SmartDisperse is ReentrancyGuard {
 
         // Send the Token to the bridge for cross-chain transfer
         ISuperchainTokenBridge(Predeploys.SUPERCHAIN_TOKEN_BRIDGE).sendERC20(
-            _token,
+            Predeploys.SUPERCHAIN_WETH,
             address(this),
             totalAmount,
             _toChainId
@@ -196,7 +194,7 @@ contract SmartDisperse is ReentrancyGuard {
         TransferMessage memory message = TransferMessage({
             recipients: _recipients,
             amounts: _amounts,
-            tokenAddress: _token,
+            tokenAddress: Predeploys.SUPERCHAIN_WETH,
             totalAmount: totalAmount
         });
 
@@ -273,8 +271,7 @@ contract SmartDisperse is ReentrancyGuard {
     }
 
     function crossChainDisperseNativeMultiChain(
-        CrossChainTransfer[] calldata transfers,
-        address _token
+        CrossChainTransfer[] calldata transfers
     ) external payable {
         uint256 totalAmount = _validateAndCalculateTotal(transfers);
         
@@ -283,7 +280,7 @@ contract SmartDisperse is ReentrancyGuard {
         ISuperchainWETH(payable(Predeploys.SUPERCHAIN_WETH)).deposit{value: totalAmount}();
         
         for (uint256 i = 0; i < transfers.length; i++) {
-            _processTransfer(transfers[i], _token);
+            _processTransfer(transfers[i], Predeploys.SUPERCHAIN_WETH);
         }
         
         uint256 refund = msg.value - totalAmount;
