@@ -19,6 +19,7 @@ contract SmartDisperseSameChainTest is Test {
     address recipient1 = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
     address recipient2 = 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC;
     address recipient3 = 0x90F79bf6EB2c4f870365E785982E1f101E93b906;
+    address owner = address(this);
 
     address payable constant SUPERCHAIN_WETH_TOKEN =
         payable(0x4200000000000000000000000000000000000024);
@@ -274,6 +275,71 @@ contract SmartDisperseSameChainTest is Test {
         assertEq(superchainWETH.balanceOf(recipient2), 0);
         assertEq(superchainWETH.balanceOf(user), 10 ether);
     }
+
+    function testWithdrawNative_Success() public {
+        vm.deal(address(smartDisperse), 5 ether);
+
+        uint256 initialBalance = address(owner).balance;
+        smartDisperse.withdrawNative(payable(owner));
+
+        assertEq(address(owner).balance, initialBalance + 5 ether, "Incorrect withdrawal amount");
+    }
+
+    function testWithdrawNative_NoFunds() public {
+        // Expect revert when trying to withdraw with no funds in the contract
+        vm.expectRevert(InvalidAmount.selector);
+        smartDisperse.withdrawNative(payable(owner));
+    }
+
+    function testWithdrawNative_TransferFails() public {
+        vm.deal(address(smartDisperse), 5 ether);
+
+        // Deploy a malicious recipient that rejects ETH transfers
+        address maliciousRecipient = address(new MaliciousRecipient());
+
+        vm.expectRevert(TransferFailed.selector);
+        smartDisperse.withdrawNative(payable(maliciousRecipient));
+    }
+
+    function testWithdrawERC20_Success() public {
+        vm.startPrank(user);
+        superchainWETH.transfer(address(smartDisperse), 2 ether);
+        vm.stopPrank();
+
+        uint256 initialBalance = superchainWETH.balanceOf(owner);
+        smartDisperse.withdrawERC20(address(superchainWETH), owner);
+
+        assertEq(
+            superchainWETH.balanceOf(owner),
+            initialBalance + 2 ether,
+            "Incorrect ERC20 withdrawal amount"
+        );
+    }
+
+    function testWithdrawERC20_NoFunds() public {
+        // Expect revert when trying to withdraw with no ERC20 tokens in the contract
+        vm.expectRevert(InvalidAmount.selector);
+        smartDisperse.withdrawERC20(address(superchainWETH), owner);
+    }
+
+    function testWithdrawERC20_TransferFails() public {
+        vm.startPrank(user);
+        superchainWETH.transfer(address(smartDisperse), 2 ether);
+        vm.stopPrank();
+
+        // Mock the ERC20 transfer to fail
+        vm.mockCall(
+            address(superchainWETH),
+            abi.encodeWithSelector(superchainWETH.transfer.selector, owner, 2 ether),
+            abi.encode(false)
+        );
+
+        vm.expectRevert(TransferFailed.selector);
+        smartDisperse.withdrawERC20(address(superchainWETH), owner);
+    }
+
+    receive() external payable {}
+
 }
 
 contract MaliciousRecipient {

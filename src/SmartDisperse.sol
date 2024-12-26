@@ -7,6 +7,7 @@ import {ISuperchainWETH} from "optimism/packages/contracts-bedrock/src/L2/interf
 import {Predeploys} from "@contracts-bedrock/libraries/Predeploys.sol";
 import {ISuperchainTokenBridge} from "optimism/packages/contracts-bedrock/src/L2/interfaces/ISuperchainTokenBridge.sol";
 import {ReentrancyGuard} from "optimism/packages/contracts-bedrock/lib/openzeppelin-contracts/contracts/security/ReentrancyGuard.sol";
+import {Ownable} from "optimism/packages/contracts-bedrock/lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 
 
 // Custom error definitions for better gas efficiency
@@ -17,7 +18,7 @@ error TransferFailed();
 error InvalidArrayLength();
 
 
-contract SmartDisperse is ReentrancyGuard {
+contract SmartDisperse is ReentrancyGuard, Ownable {
 
     /// @notice Structure to hold transfer details for cross-chain token distribution
     struct TransferMessage {
@@ -367,6 +368,28 @@ contract SmartDisperse is ReentrancyGuard {
     }
 
     /*******************************     WITHDRAW FUNCTIONS      ***********************************/
-    // :TODO
+    
+    /**
+     * @notice Withdraw any native tokens (ETH) left in the contract
+     * @param _to The address to send the withdrawn funds to
+     */
+    function withdrawNative(address payable _to) external onlyOwner {
+        uint256 balance = address(this).balance;
+        if (balance == 0) revert InvalidAmount();
+        (bool success, ) = _to.call{value: balance}("");
+        if (!success) revert TransferFailed();
+    }
+
+    /**
+     * @notice Withdraw any ERC20 tokens left in the contract
+     * @param _token The address of the ERC20 token to withdraw
+     * @param _to The address to send the withdrawn funds to
+     */
+    function withdrawERC20(address _token, address _to) external onlyOwner {
+        uint256 balance = ISuperchainERC20(_token).balanceOf(address(this));
+        if (balance == 0) revert InvalidAmount();
+        bool success = ISuperchainERC20(_token).transfer(_to, balance);
+        if (!success) revert TransferFailed();
+    }
 
 }
